@@ -13,3 +13,5 @@ the following commit rather than the same one.
 | 3 | [`ba67aa8`](./3-ba67aa8.md) | Fix unsafe seed re-run, add passing catalog-channel integration test, changelog |
 | 4 | [`fa044d5`](./4-fa044d5.md) | Add price-by-region test case (TDD case 3), changelog for previous commit |
 | 5 | [`3735fa3`](./5-3735fa3.md) | Add changelog entry for fa044d5 |
+| 6 | [`7899ffc`](./6-7899ffc.md) | Index history files by creation order (1-hash, 2-hash, ...) |
+| 7 | [`42074cb`](./7-42074cb.md) | Add shared-inventory integration test (TDD case 4), passing end to end |

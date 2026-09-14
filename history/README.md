@@ -22,3 +22,4 @@ the following commit rather than the same one.
 | 12 | [`e5872f1`](./12-e5872f1.md) | Add changelog entry for f3a7e10 |
 | 13 | [`20d6941`](./13-20d6941.md) | Phase 3: shared customer identity and partial-return restock tests |
 | 14 | [`f70f010`](./14-f70f010.md) | Verify storefronts against a real seeded backend end to end |
+| 15 | [`8e2ca18`](./15-8e2ca18.md) | Phase 3: tax configuration (JP consumption tax, US deferred) |

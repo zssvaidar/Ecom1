@@ -83,9 +83,32 @@ working in this repo; unchecked items are scoped but not yet built.
       module — before any gift-card code gets written; see that spec's Open Questions.
 
 ## Phase 3 — Customer & post-purchase
-- [ ] Shared customer accounts across both storefronts
-- [ ] Returns/refunds workflow
-- [ ] Tax configuration (JP consumption tax, US sales tax)
+- [x] Shared customer accounts (`apps/backend/integration-tests/http/
+      customer-identity.spec.ts`, covers TDD cases 1-4 from `medusa-customer-
+      returns.tdd.md`): registering on Brand A and logging in on Brand B resolves to
+      the same customer record (no duplicate); the JWT works identically presented
+      against either brand's publishable key (identity isn't channel-scoped); order
+      history spans both brands, each order tagged with its own `sales_channel_id`.
+      Case 5 (expired-JWT/refresh) not covered — token-expiry mechanics, not the
+      cross-brand identity guarantee this project cares about.
+- [x] Returns/refunds — partial restock only
+      (`apps/backend/integration-tests/http/returns.spec.ts`, TDD case 6): an order
+      for 3 units, 1 returned and received, restocks the shared pool by exactly 1, not
+      all 3 — proving a partial return doesn't over-restock. Getting there surfaced a
+      real Medusa constraint: a return can only cover *fulfilled* quantity ("Cannot
+      request to return more items than what was fulfilled"), so the test creates an
+      order fulfillment before requesting the return, mirroring the real flow where
+      you can't return something that hasn't shipped. Admin actions in the test use a
+      real admin user, created by registering an auth identity over HTTP
+      (`/auth/user/emailpass/register`) and attaching a `User` to it via
+      `createUserAccountWorkflow` directly — Medusa has no open self-registration for
+      admin users, only an invite-accept flow, and this is the same underlying
+      mechanism without needing to also drive the invite/accept HTTP round trip.
+      **Not covered:** case 7 (return-window rejection — unclear if Medusa v2 enforces
+      this out of the box; not yet checked), case 8 (full-order return + refund —
+      needs the same Stripe credentials/mocking already blocked in Phase 2), case 9
+      (Twenty sync event emission — Twenty isn't in the stack yet, Phase 4/5).
+- [ ] Tax configuration (JP consumption tax, US sales tax) — not started
 
 ## Phase 4 — Twenty CRM data model
 - [ ] Twenty added to the stack (self-hosted service or Cloud reference)

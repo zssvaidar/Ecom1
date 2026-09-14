@@ -1,0 +1,86 @@
+# Local dev stack. Postgres here is dev-only — staging/prod use AWS RDS instead
+# (docs/specs/12-database-design.md, docs/specs/13-infra-docker-compose.md).
+#
+# Twenty CRM is not included yet (Phase 4/5); see docs/specs/18-folder-structure.md.
+#
+# Usage:
+#   cp .env.example .env
+#   docker compose up --build
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-medusa}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-medusa}
+      REDIS_URL: redis://redis:6379
+      STORE_CORS: http://localhost:8000,http://localhost:8001
+      ADMIN_CORS: http://localhost:9000
+      AUTH_CORS: http://localhost:9000
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      COOKIE_SECRET: ${COOKIE_SECRET:-supersecret}
+    ports:
+      - "9000:9000"
+
+  storefront-a:
+    build:
+      context: .
+      dockerfile: apps/storefront-brand-a/Dockerfile
+      args:
+        MEDUSA_BACKEND_URL: http://backend:9000
+        NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: ${BRAND_A_PUBLISHABLE_KEY:-pk_brand_a}
+        NEXT_PUBLIC_BASE_URL: http://localhost:8000
+        NEXT_PUBLIC_DEFAULT_REGION: us
+    depends_on:
+      - backend
+    ports:
+      - "8000:8000"
+
+  storefront-b:
+    build:
+      context: .
+      dockerfile: apps/storefront-brand-b/Dockerfile
+      args:
+        MEDUSA_BACKEND_URL: http://backend:9000
+        NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: ${BRAND_B_PUBLISHABLE_KEY:-pk_brand_b}
+        NEXT_PUBLIC_BASE_URL: http://localhost:8001
+        NEXT_PUBLIC_DEFAULT_REGION: jp
+    depends_on:
+      - backend
+    ports:
+      - "8001:8001"
+
+volumes:
+  pgdata:

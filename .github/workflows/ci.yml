@@ -1,0 +1,65 @@
+name: CI
+
+# GitHub Actions stands in for the GitLab+Jenkins pipeline described in
+# docs/specs/15-cicd.md, which targets self-hosted infra this repo doesn't have.
+# See docs/specs/18-folder-structure.md for that deviation.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # Dummy values only — nothing here is a real secret. Real secrets come from Vault
+  # at deploy time per docs/specs/14-env-secrets.md; CI never touches that store.
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/medusa
+  REDIS_URL: redis://localhost:6379
+  JWT_SECRET: ci-only-secret
+  COOKIE_SECRET: ci-only-secret
+  STORE_CORS: http://localhost:8000,http://localhost:8001
+  ADMIN_CORS: http://localhost:9000
+  AUTH_CORS: http://localhost:9000
+  NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY: pk_ci_placeholder
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests (no DB required)
+        # --passWithNoTests: Phase 0 has no custom modules/workflows yet, so there's
+        # nothing under src/**/__tests__ to match. Drop this once Phase 1 adds real tests.
+        run: npm run test:unit --workspace=@dtc/backend -- --passWithNoTests
+
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace=@dtc/backend
+
+  # The storefronts are NOT built here: their production build statically
+  # renders pages (e.g. categories) that fetch from a live Medusa backend, so
+  # a full `next build` needs a running backend + seeded data, not just a
+  # checkout. `next lint` (above) is the compile-time signal this pipeline
+  # gives for the storefronts until Phase 1 seeds a backend CI can build against.

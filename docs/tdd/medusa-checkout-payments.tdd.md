@@ -5,6 +5,37 @@ Process landscape ref: Process 1 (Order-to-Cash)
 
 ---
 
+## Mocking Stripe: what actually works in this environment
+
+This whole spec's fixture list calls for "mocked Stripe client" throughout — the right
+call, since there's no real Stripe test-mode key available in Vault yet (`docs/specs/
+14-env-secrets.md`). Two mocking approaches were tried and both failed for reasons
+specific to this Medusa version, not to the test code:
+
+- **`jest.mock("stripe")`** — has no effect. Medusa loads payment providers through its
+  own dynamic-import loader (`@medusajs/utils/dist/common/dynamic-import.js`), which
+  does not go through Jest's require-based module registry. Confirmed empirically: with
+  a fake `STRIPE_SECRET_KEY` and this mock in place, the *real* Stripe SDK still ran and
+  got a real 401 from `api.stripe.com`.
+- **`nock` intercepting `https://api.stripe.com`** — nock patches Node's http/https
+  layer directly, underneath the loader, so in principle it should work regardless of
+  how the SDK got loaded. In practice, both test cases (and the suite's own shutdown)
+  hung to a 60s+ timeout instead of hitting the interceptor or failing fast. Not
+  chased further than confirming it wasn't a quick fix — an actively-hanging test is
+  worse than no test, so it was removed rather than landed half-working.
+
+Net effect: **currency-correct payment session creation (cases 1-2 below) is not
+covered by an automated test yet.** The conditional Stripe provider registration in
+`medusa-config.ts` (only registers `@medusajs/payment-stripe` when `STRIPE_SECRET_KEY`
+is set, so `medusa develop`/`build`/tests don't break without one) is written and
+confirmed not to regress anything when the key is absent — that part is verified. The
+currency-conversion logic itself (`getSmallestUnit` in `@medusajs/payment-stripe`,
+confirmed to multiply by 100 for USD and by 1 for JPY) is vendor code, not something
+this repo owns, so the honest path forward is real Stripe test-mode credentials in a
+real (non-sandboxed) environment, not more mocking attempts here.
+
+---
+
 ## Unit under test: Currency-correct payment session creation
 
 **Test cases**

@@ -54,11 +54,19 @@ working in this repo; unchecked items are scoped but not yet built.
       convention (filtering, not enforcement)
 
 ## Phase 2 — Payments & checkout
-- [ ] Stripe integration for both currencies — not started. `medusa-checkout-
-      payments.tdd.md` calls for a *mocked* Stripe client, which is the right approach
-      (no real API keys in this environment either way), but registering
-      `@medusajs/payment-stripe` in `medusa-config.ts` needs thought about how to keep
-      local/CI startup working without a `STRIPE_SECRET_KEY` — not yet done.
+- [x] Stripe module registration (`apps/backend/medusa-config.ts`): conditional on
+      `STRIPE_SECRET_KEY` being set, so `medusa develop`/`build`/tests keep working
+      without one — verified the app still boots and the full test suite still passes
+      with the key absent. The resulting provider id is `pp_stripe_stripe`.
+- [ ] Currency-correct payment session tests (TDD cases 1-2) — **attempted, not
+      landed.** Both `jest.mock("stripe")` and a `nock`-based network intercept were
+      tried; neither worked in this environment (see `medusa-checkout-payments.tdd.md`'s
+      new "Mocking Stripe" section for the specifics — the nock version actively hung
+      to timeout, so it was removed rather than left half-working). Needs either a
+      different mocking strategy or real Stripe test-mode credentials to verify for
+      real; not something to keep guessing at blind.
+- [ ] Payment success/failure/refund flows (TDD cases 3-8) — not started, same
+      real-credentials blocker as above.
 - [x] Discounts (`apps/backend/integration-tests/http/discounts.spec.ts`, new
       `docs/tdd/medusa-discounts-giftcards.tdd.md`): a channel-scoped percentage
       discount applies only on its own brand's cart; a global percentage discount

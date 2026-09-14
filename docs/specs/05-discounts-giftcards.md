@@ -18,6 +18,15 @@ Define discount and gift-card behavior across two brands sharing one backend.
 
 ## Gift cards
 
+**Not implementable as written on this Medusa version.** Medusa v2 (2.21.0, what this
+repo runs) has no gift-card module — no `@medusajs/gift-card` package, no gift-card
+entry in the module registry, no gift-card API routes. The only remnant is a vestigial
+`is_giftcard` boolean on the product model with no balance, redemption, or
+currency-locking logic behind it. Everything below describes Medusa v1 gift-card
+behavior that does not exist in this stack; see `docs/tdd/medusa-discounts-
+giftcards.tdd.md` for the decision this blocks on (scope gift cards out, or design a
+custom module) before writing any gift-card code against this section.
+
 - Issued in a single currency at creation (matching the region/brand they were purchased
   on), redeemable only within that currency's region — a USD gift card can't be redeemed
   on the JPY-priced Brand B storefront and vice versa, since Medusa gift card balances are
@@ -34,12 +43,18 @@ Define discount and gift-card behavior across two brands sharing one backend.
   require `admin` role.
 
 ## Open questions
-- Confirm gift cards should NOT be cross-brand redeemable (assumed above) — flag if you
-  want a shared gift-card balance across both brands, which would need custom work.
+- **Gift cards have no module to build on in Medusa v2** (see above) — decide whether
+  to (a) drop gift cards from project scope, or (b) treat them as a custom module with
+  its own spec (data model, redemption workflow, storefront UI). Nothing gift-card-
+  related should be built until this is decided; the cross-brand-redemption question
+  originally asked here is moot until then.
 
 ## Done means
-- [ ] A channel-scoped discount applies only on its brand's storefront
-- [ ] A global discount applies correctly on both storefronts, in each one's currency
-- [ ] Gift card purchased on Brand A cannot be redeemed on Brand B (unless overridden per
-      the open question above)
-- [ ] Staff role restrictions enforced for discount/gift-card creation
+- [x] A channel-scoped discount applies only on its brand's storefront — verified in
+      `apps/backend/integration-tests/http/discounts.spec.ts`
+- [x] A global discount applies correctly on both storefronts, in each one's currency —
+      verified in the same test file
+- [ ] Gift card purchased on Brand A cannot be redeemed on Brand B — blocked on the open
+      question above, not attempted
+- [ ] Staff role restrictions enforced for discount/gift-card creation — blocked on the
+      same per-channel-admin-role gap noted in `01-medusa-config.md`

@@ -54,8 +54,25 @@ working in this repo; unchecked items are scoped but not yet built.
       convention (filtering, not enforcement)
 
 ## Phase 2 — Payments & checkout
-- [ ] Stripe integration for both currencies
-- [ ] Discounts and gift cards
+- [ ] Stripe integration for both currencies — not started. `medusa-checkout-
+      payments.tdd.md` calls for a *mocked* Stripe client, which is the right approach
+      (no real API keys in this environment either way), but registering
+      `@medusajs/payment-stripe` in `medusa-config.ts` needs thought about how to keep
+      local/CI startup working without a `STRIPE_SECRET_KEY` — not yet done.
+- [x] Discounts (`apps/backend/integration-tests/http/discounts.spec.ts`, new
+      `docs/tdd/medusa-discounts-giftcards.tdd.md`): a channel-scoped percentage
+      discount applies only on its own brand's cart; a global percentage discount
+      applies on both brands, each in its own currency; a fixed-amount discount is
+      locked to the currency it was created in (applies on a matching-currency cart,
+      silently doesn't apply on a mismatched one). **5/5 passing against a real local
+      Postgres.**
+- [ ] Gift cards — **found a real gap, not just "not started yet":** Medusa v2 (2.21.0)
+      has no gift-card module at all (no package, no module registration, no API
+      routes) — only a vestigial `is_giftcard` boolean on the product model with
+      nothing behind it. `docs/specs/05-discounts-giftcards.md` describes Medusa v1
+      gift-card behavior (balance, partial redemption, currency lock) that doesn't
+      exist here. This needs a scope decision — drop gift cards, or design a custom
+      module — before any gift-card code gets written; see that spec's Open Questions.
 
 ## Phase 3 — Customer & post-purchase
 - [ ] Shared customer accounts across both storefronts

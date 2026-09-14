@@ -44,17 +44,29 @@ cd ../..
 npm run backend:dev        # http://localhost:9000, admin at /app
 ```
 
-Open the admin, create a publishable API key per sales channel (Phase 1 —
-see `docs/specs/01-medusa-config.md`), then:
+`db:migrate` already seeded two sales channels, two regions, and a publishable key per
+brand (`docs/specs/01-medusa-config.md`) — grab the actual key values from the Admin
+(Settings → Publishable API Keys) or straight from the database:
+
+```bash
+psql "$DATABASE_URL" -c "SELECT title, token FROM api_key WHERE type='publishable';"
+```
 
 ```bash
 cp apps/storefront-brand-a/.env.template apps/storefront-brand-a/.env.local
 cp apps/storefront-brand-b/.env.template apps/storefront-brand-b/.env.local
-# set NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY in each to its brand's key
+# set NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY in each .env.local to its brand's key
+# (Brand A -> storefront-brand-a, Brand B -> storefront-brand-b); .env.local
+# is gitignored, so this step is per-environment, not something to commit
 
-npm run storefront-a:dev   # http://localhost:8000
-npm run storefront-b:dev   # http://localhost:8001
+npm run storefront-a:dev   # http://localhost:8000 — browse /us/categories/apparel
+npm run storefront-b:dev   # http://localhost:8001 — browse /jp/categories/apparel
 ```
+
+Verified end to end in a real browser: both storefronts render the seeded
+"Cross-Brand Demo Tee" at the right price for their currency ($20.00 on Brand A,
+¥3,000 on Brand B), and a full browse → select size → add-to-cart flow completes with
+no console errors.
 
 Or bring up the full stack (Postgres, Redis, backend, both storefronts) in containers:
 

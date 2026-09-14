@@ -121,8 +121,18 @@ working in this repo; unchecked items are scoped but not yet built.
 
 ## Phase 6 — Frontend
 - [x] Two Next.js apps scaffolded, each on its own port, own `.env.template`
-- [ ] Storefronts wired to real sales-channel publishable keys once Phase 1 creates them
-- [ ] Shared account/session across both apps
+- [x] Storefronts wired to real sales-channel publishable keys and driven end to end in a
+      real browser (Playwright against the pre-installed Chromium, `chromium-cli` wasn't
+      available in this environment): ran the backend + both storefronts against a fresh
+      seeded Postgres, confirmed both render the seeded catalog, resolve the
+      cross-listed demo product to the correct currency for each brand ($20.00 on Brand
+      A, ¥3,000 on Brand B), and complete a full browse → select variant → add-to-cart
+      flow with no console errors. `.env.local` files hold the real (dev-only)
+      publishable keys and are gitignored, not committed — see the README for the exact
+      steps to reproduce.
+- [ ] Shared account/session across both apps — not verified in the browser yet; the
+      backend side of this is already covered by
+      `apps/backend/integration-tests/http/customer-identity.spec.ts` (Phase 3)
 
 ## Phase 7 — Hardening & launch
 - [ ] Logging/monitoring

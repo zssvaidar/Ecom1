@@ -33,10 +33,21 @@ working in this repo; unchecked items are scoped but not yet built.
       against a real local Postgres.** Caught a real gap along the way: the test
       runner's ephemeral database only runs schema migrations, not
       `src/migration-scripts/` — so unlike a real dev DB, no default shipping profile
-      exists yet; the test creates one directly instead of assuming it. The
-      concurrency/oversell cases (7–8) and low-stock alerting (9) are not covered yet —
-      they need a harness for concurrent requests and event-bus assertions this test
-      doesn't have.
+      exists yet; the test creates one directly instead of assuming it.
+- [x] Integration test (`apps/backend/integration-tests/http/shared-inventory.spec.ts`)
+      covering TDD case 4: a real cart → shipping address → shipping method → payment
+      collection/session (`pp_system_default`) → complete flow, placed via Brand A's
+      publishable key, against a variant backed by one inventory item stocked at 5 and
+      linked to both brands' sales channels through one shared stock location. Asserts
+      the inventory item's available quantity (`stocked_quantity - reserved_quantity`)
+      drops to 3 afterward. **Passing against a real local Postgres**, first try. The
+      item isn't scoped to a sales channel at all, so this is the same number either
+      brand would read — proven directly at the inventory_level row rather than via two
+      separate HTTP calls.
+      Not covered yet: TDD cases 5-6 (reject add-to-cart at zero stock, restock
+      reflecting immediately), 7-8 (concurrent-checkout oversell prevention — needs a
+      harness for firing simultaneous requests), 9 (low-stock alerting — needs an
+      event-bus spy).
 - [ ] Product/variant catalog beyond the one demo product
 - [ ] Admin roles scoped by sales channel — Medusa v2 doesn't have a built-in per-channel
       admin role; revisit whether this needs a custom module or is just an Admin UI

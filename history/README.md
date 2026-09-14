@@ -15,3 +15,5 @@ the following commit rather than the same one.
 | 5 | [`3735fa3`](./5-3735fa3.md) | Add changelog entry for fa044d5 |
 | 6 | [`7899ffc`](./6-7899ffc.md) | Index history files by creation order (1-hash, 2-hash, ...) |
 | 7 | [`42074cb`](./7-42074cb.md) | Add shared-inventory integration test (TDD case 4), passing end to end |
+| 8 | [`ddf89b3`](./8-ddf89b3.md) | Add changelog entries for 7899ffc and 42074cb |
+| 9 | [`21f6ccb`](./9-21f6ccb.md) | Phase 2: discount tests (channel-scoped, global, currency-locked); flag gift-card gap |

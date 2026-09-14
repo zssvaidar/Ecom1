@@ -108,7 +108,28 @@ working in this repo; unchecked items are scoped but not yet built.
       this out of the box; not yet checked), case 8 (full-order return + refund —
       needs the same Stripe credentials/mocking already blocked in Phase 2), case 9
       (Twenty sync event emission — Twenty isn't in the stack yet, Phase 4/5).
-- [ ] Tax configuration (JP consumption tax, US sales tax) — not started
+- [x] Tax configuration (JP consumption tax, US sales tax)
+      (`apps/backend/integration-tests/http/tax.spec.ts`): a JP tax region carries a
+      10% "Consumption Tax" rate; a JP cart correctly backs 10% out of a
+      tax-inclusive price (¥3300 item total → ¥300 tax, ¥3300 total unchanged), while
+      a US cart shows zero tax since no rate is configured for it yet. Getting the JP
+      case right surfaced a real Medusa quirk: tax-inclusivity for a price is resolved
+      from the price preference matching how the price itself was *set* — our variant
+      prices carry a plain `currency_code`, not a region-specific price rule, so only
+      a **currency-level** `PricePreference` (`{attribute: "currency_code", value:
+      "jpy"}`) takes effect; a region-level one (`{attribute: "region_id", ...}`)
+      silently has no effect on cart tax computation for these prices. See
+      `isTaxInclusive()` in `@medusajs/pricing/dist/services/pricing-module.js`.
+      `initial-data-seed.ts` updates the "jpy" preference `createStoresWorkflow`
+      already created (updating rather than creating avoids an "already exists"
+      conflict); the test creates one from scratch since it never runs
+      `createStoresWorkflow`. Verified against a fresh `db:migrate`'d dev database via
+      a real cart request, not just the integration test: item_total 3000, tax_total
+      ≈272.73, total 3000 on the seeded demo product.
+      **US sales tax is intentionally deferred** — it varies by state, so a single
+      flat country-level rate would misrepresent it; `docs/specs/01-medusa-config.md`
+      marks the exact provider/rate-table approach as still TBD, so the US tax region
+      exists (for `tp_system` to resolve against) but carries no rate.
 
 ## Phase 4 — Twenty CRM data model
 - [ ] Twenty added to the stack (self-hosted service or Cloud reference)

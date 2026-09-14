@@ -16,6 +16,7 @@ import {
   createShippingOptionsWorkflow,
   createStockLocationsWorkflow,
   createStoresWorkflow,
+  createTaxRatesWorkflow,
   createTaxRegionsWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
   linkSalesChannelsToStockLocationWorkflow,
@@ -135,11 +136,49 @@ export default async function initial_data_seed({
   logger.info("Finished seeding regions.");
 
   logger.info("Seeding tax regions...");
-  await createTaxRegionsWorkflow(container).run({
+  const { result: taxRegionsResult } = await createTaxRegionsWorkflow(
+    container
+  ).run({
     input: [
       { country_code: "us", provider_id: "tp_system" },
       { country_code: "jp", provider_id: "tp_system" },
     ],
+  });
+  const jpTaxRegion = taxRegionsResult.find((r) => r.country_code === "jp")!;
+
+  // JP: 10% consumption tax, prices entered tax-inclusive (docs/specs/01-medusa-
+  // config.md). US sales tax is intentionally NOT configured here — it varies by
+  // state, so a single country-level rate would misrepresent it; that spec marks
+  // the exact provider/rate-table approach as still TBD, so the US tax region
+  // exists (for tp_system to resolve against) but carries no rate yet.
+  await createTaxRatesWorkflow(container).run({
+    input: [
+      {
+        tax_region_id: jpTaxRegion.id,
+        name: "Consumption Tax",
+        code: "JP_CONSUMPTION",
+        rate: 10,
+        is_default: true,
+      },
+    ],
+  });
+  // Tax-inclusivity is resolved from the *currency-level* price preference
+  // when a price was set by currency_code (as this seed's product prices
+  // are, not by region_id) — see isTaxInclusive() in
+  // @medusajs/pricing/dist/services/pricing-module.js: a region-level
+  // preference only applies if the price also carries a region_id price
+  // rule, which a plain currency_code price never does. Verified by testing
+  // the region-level version first: it silently had no effect on the cart's
+  // tax computation. createStoresWorkflow already created a default
+  // (non-tax-inclusive) preference for "jpy" — update it rather than create
+  // another, which conflicts ("already exists").
+  const pricingModuleService = container.resolve(ModuleRegistrationName.PRICING);
+  const [jpyPricePreference] = await pricingModuleService.listPricePreferences({
+    attribute: "currency_code",
+    value: "jpy",
+  });
+  await pricingModuleService.updatePricePreferences(jpyPricePreference.id, {
+    is_tax_inclusive: true,
   });
   logger.info("Finished seeding tax regions.");
 

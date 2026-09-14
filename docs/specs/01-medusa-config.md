@@ -15,6 +15,12 @@ Each product is assigned to one or both channels depending on whether it's brand
 or cross-listed. Shared inventory means the same inventory item can back variants listed on
 both channels without duplicating stock.
 
+Medusa's `SalesChannel` model has no `handle` field — the "Handle" column above is this
+doc's own stable name for each channel, not a stored value. The seed script
+(`apps/backend/src/migration-scripts/initial-data-seed.ts`) creates channels named
+"Brand A" / "Brand B" and looks them up by that `name`; code that needs to find "the
+brand-a channel" should match on name, not expect a `handle` field to exist.
+
 ## Regions & currency
 
 | Region | Currency | Sales channel | Countries |

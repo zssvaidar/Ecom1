@@ -18,9 +18,18 @@ working in this repo; unchecked items are scoped but not yet built.
       `14-env-secrets.md` is the contract to wire up against a real Vault later)
 
 ## Phase 1 — Medusa core commerce
-- [ ] Two sales channels (`brand-a`, `brand-b`) + two regions (US/USD, JP/JPY)
-- [ ] Product/variant catalog per brand, shared inventory location
-- [ ] Admin roles scoped by sales channel
+- [x] Seed script written (`apps/backend/src/migration-scripts/initial-data-seed.ts`,
+      run via `npm run backend:seed`): two sales channels (Brand A, Brand B) with a
+      publishable key each, two regions (US/USD, JP/JPY), US+JP tax regions, one shared
+      `Main Warehouse` stock location linked to both channels, and a cross-listed demo
+      product priced in both currencies to prove the shared stock pool. Compiles cleanly
+      against Medusa's workflow types (`npm run build --workspace=@dtc/backend`) but has
+      **not been run against a live database** — no Postgres/Docker daemon in this
+      environment. Run it once and verify in the Admin before trusting it further.
+- [ ] Product/variant catalog beyond the one demo product
+- [ ] Admin roles scoped by sales channel — Medusa v2 doesn't have a built-in per-channel
+      admin role; revisit whether this needs a custom module or is just an Admin UI
+      convention (filtering, not enforcement)
 
 ## Phase 2 — Payments & checkout
 - [ ] Stripe integration for both currencies

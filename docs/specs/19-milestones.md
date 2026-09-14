@@ -26,14 +26,17 @@ working in this repo; unchecked items are scoped but not yet built.
       local Postgres** — ran clean end to end. There is no separate `seed` command; see
       `AGENTS.md`'s Database section for why one must not be added back.
 - [x] Integration test (`apps/backend/integration-tests/http/catalog-channels.spec.ts`)
-      covering TDD cases 1–2 from `docs/tdd/medusa-catalog.tdd.md`: a single-channel
-      product doesn't leak into the other brand's `/store/products`, a cross-listed
-      product appears under both. **Passing against a real local Postgres.** Caught a
-      real gap along the way: the test runner's ephemeral database only runs schema
-      migrations, not `src/migration-scripts/` — so unlike a real dev DB, no default
-      shipping profile exists yet; the test creates one directly instead of assuming it.
-      TDD case 3 (price-by-region/currency) and the concurrency/oversell cases (7–8) are
-      not covered yet.
+      covering TDD cases 1–3 from `docs/tdd/medusa-catalog.tdd.md`: a single-channel
+      product doesn't leak into the other brand's `/store/products`; a cross-listed
+      product appears under both; its price resolves to the right currency/region
+      (USD for the US region, JPY for the JP region) for each brand. **4/4 passing
+      against a real local Postgres.** Caught a real gap along the way: the test
+      runner's ephemeral database only runs schema migrations, not
+      `src/migration-scripts/` — so unlike a real dev DB, no default shipping profile
+      exists yet; the test creates one directly instead of assuming it. The
+      concurrency/oversell cases (7–8) and low-stock alerting (9) are not covered yet —
+      they need a harness for concurrent requests and event-bus assertions this test
+      doesn't have.
 - [ ] Product/variant catalog beyond the one demo product
 - [ ] Admin roles scoped by sales channel — Medusa v2 doesn't have a built-in per-channel
       admin role; revisit whether this needs a custom module or is just an Admin UI

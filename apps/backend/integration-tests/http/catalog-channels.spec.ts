@@ -2,6 +2,7 @@ import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
 import {
   createApiKeysWorkflow,
   createProductsWorkflow,
+  createRegionsWorkflow,
   createSalesChannelsWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
 } from "@medusajs/medusa/core-flows";
@@ -11,9 +12,10 @@ import {
   ProductStatus,
 } from "@medusajs/framework/utils";
 
-// Covers TDD cases 1 & 2 from docs/tdd/medusa-catalog.tdd.md: a product
+// Covers TDD cases 1-3 from docs/tdd/medusa-catalog.tdd.md: a product
 // assigned to a single sales channel must not leak into the other brand's
-// catalog, and a cross-listed product must appear under both.
+// catalog, a cross-listed product must appear under both, and its price
+// must resolve to the right currency/region for each.
 jest.setTimeout(60 * 1000);
 
 medusaIntegrationTestRunner({
@@ -21,6 +23,8 @@ medusaIntegrationTestRunner({
     describe("Catalog channel scoping", () => {
       let brandAKey: string;
       let brandBKey: string;
+      let usRegionId: string;
+      let jpRegionId: string;
       let brandOnlyProductId: string;
       let crossListedProductId: string;
 
@@ -74,6 +78,27 @@ medusaIntegrationTestRunner({
         await linkSalesChannelsToApiKeyWorkflow(container).run({
           input: { id: brandBApiKey.id, add: [brandB.id] },
         });
+
+        const { result: regions } = await createRegionsWorkflow(container).run({
+          input: {
+            regions: [
+              {
+                name: "Test US Region",
+                currency_code: "usd",
+                countries: ["us"],
+                payment_providers: ["pp_system_default"],
+              },
+              {
+                name: "Test JP Region",
+                currency_code: "jpy",
+                countries: ["jp"],
+                payment_providers: ["pp_system_default"],
+              },
+            ],
+          },
+        });
+        usRegionId = regions.find((r) => r.currency_code === "usd")!.id;
+        jpRegionId = regions.find((r) => r.currency_code === "jpy")!.id;
 
         // The integration test runner spins up a fresh database via schema
         // migrations only — it does NOT run src/migration-scripts (that's a
@@ -182,6 +207,27 @@ medusaIntegrationTestRunner({
         expect(
           resB.data.products.map((p: { id: string }) => p.id)
         ).toContain(crossListedProductId);
+      });
+
+      it("resolves the cross-listed variant's price to each brand's own currency/region", async () => {
+        const [resUs, resJp] = await Promise.all([
+          api.get(
+            `/store/products/${crossListedProductId}?region_id=${usRegionId}`,
+            { headers: { "x-publishable-api-key": brandAKey } }
+          ),
+          api.get(
+            `/store/products/${crossListedProductId}?region_id=${jpRegionId}`,
+            { headers: { "x-publishable-api-key": brandBKey } }
+          ),
+        ]);
+
+        const usPrice = resUs.data.product.variants[0].calculated_price;
+        const jpPrice = resJp.data.product.variants[0].calculated_price;
+
+        expect(usPrice.currency_code).toBe("usd");
+        expect(usPrice.calculated_amount).toBe(20);
+        expect(jpPrice.currency_code).toBe("jpy");
+        expect(jpPrice.calculated_amount).toBe(3000);
       });
     });
   },

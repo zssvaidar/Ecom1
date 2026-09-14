@@ -9,3 +9,4 @@ sometimes lands in the following commit rather than the same one.
 |---|---|
 | [`2147ea4`](./2147ea4.md) | Scaffold Phase 0: Medusa v2 + two-brand Next.js monorepo |
 | [`e58bd43`](./e58bd43.md) | Phase 1: seed script for two-brand sales channels, regions, shared inventory |
+| [`ba67aa8`](./ba67aa8.md) | Fix unsafe seed re-run, add passing catalog-channel integration test, changelog |

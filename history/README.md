@@ -17,4 +17,7 @@ the following commit rather than the same one.
 | 7 | [`42074cb`](./7-42074cb.md) | Add shared-inventory integration test (TDD case 4), passing end to end |
 | 8 | [`ddf89b3`](./8-ddf89b3.md) | Add changelog entries for 7899ffc and 42074cb |
 | 9 | [`21f6ccb`](./9-21f6ccb.md) | Phase 2: discount tests (channel-scoped, global, currency-locked); flag gift-card gap |
-| 10 | [`f3a7e10`](./10-f3a7e10.md) | Phase 2: conditional Stripe registration; document failed mocking attempts |
+| 10 | [`6fa1a60`](./10-6fa1a60.md) | Add changelog entries for ddf89b3 and 21f6ccb, fix numbering |
+| 11 | [`f3a7e10`](./11-f3a7e10.md) | Phase 2: conditional Stripe registration; document failed mocking attempts |
+| 12 | [`e5872f1`](./12-e5872f1.md) | Add changelog entry for f3a7e10 |
+| 13 | [`20d6941`](./13-20d6941.md) | Phase 3: shared customer identity and partial-return restock tests |

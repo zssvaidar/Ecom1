@@ -18,14 +18,22 @@ working in this repo; unchecked items are scoped but not yet built.
       `14-env-secrets.md` is the contract to wire up against a real Vault later)
 
 ## Phase 1 — Medusa core commerce
-- [x] Seed script written (`apps/backend/src/migration-scripts/initial-data-seed.ts`,
-      run via `npm run backend:seed`): two sales channels (Brand A, Brand B) with a
-      publishable key each, two regions (US/USD, JP/JPY), US+JP tax regions, one shared
-      `Main Warehouse` stock location linked to both channels, and a cross-listed demo
-      product priced in both currencies to prove the shared stock pool. Compiles cleanly
-      against Medusa's workflow types (`npm run build --workspace=@dtc/backend`) but has
-      **not been run against a live database** — no Postgres/Docker daemon in this
-      environment. Run it once and verify in the Admin before trusting it further.
+- [x] Seed script (`apps/backend/src/migration-scripts/initial-data-seed.ts`), run
+      automatically and exactly once by `medusa db:migrate`: two sales channels (Brand
+      A, Brand B) with a publishable key each, two regions (US/USD, JP/JPY), US+JP tax
+      regions, one shared `Main Warehouse` stock location linked to both channels, and a
+      cross-listed demo product priced in both currencies. **Verified against a real
+      local Postgres** — ran clean end to end. There is no separate `seed` command; see
+      `AGENTS.md`'s Database section for why one must not be added back.
+- [x] Integration test (`apps/backend/integration-tests/http/catalog-channels.spec.ts`)
+      covering TDD cases 1–2 from `docs/tdd/medusa-catalog.tdd.md`: a single-channel
+      product doesn't leak into the other brand's `/store/products`, a cross-listed
+      product appears under both. **Passing against a real local Postgres.** Caught a
+      real gap along the way: the test runner's ephemeral database only runs schema
+      migrations, not `src/migration-scripts/` — so unlike a real dev DB, no default
+      shipping profile exists yet; the test creates one directly instead of assuming it.
+      TDD case 3 (price-by-region/currency) and the concurrency/oversell cases (7–8) are
+      not covered yet.
 - [ ] Product/variant catalog beyond the one demo product
 - [ ] Admin roles scoped by sales channel — Medusa v2 doesn't have a built-in per-channel
       admin role; revisit whether this needs a custom module or is just an Admin UI

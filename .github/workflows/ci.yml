@@ -47,6 +47,38 @@ jobs:
         # nothing under src/**/__tests__ to match. Drop this once Phase 1 adds real tests.
         run: npm run test:unit --workspace=@dtc/backend -- --passWithNoTests
 
+  test-backend-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: medusa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # @medusajs/test-utils creates its own ephemeral test database and needs
+      # these discrete PG* vars, not just DATABASE_URL — verified locally:
+      # without them it fails with "no PostgreSQL user name specified".
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration:http --workspace=@dtc/backend
+
   build-backend:
     runs-on: ubuntu-latest
     steps:

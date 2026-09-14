@@ -97,10 +97,20 @@ cd apps/backend && <pm> run test:unit -- -t "returns the cart"
 ```bash
 cd apps/backend
 <pm> exec medusa db:generate <module-name>   # generate migrations for a custom module
-<pm> exec medusa db:migrate                  # run migrations
+<pm> exec medusa db:migrate                  # run migrations AND initial-data-seed.ts
 <pm> exec medusa user -e admin@test.com -p supersecret
-<pm> run backend:seed                        # from root; seeds initial data
 ```
+
+`db:migrate` runs everything under `src/migration-scripts/` — including
+`initial-data-seed.ts` — exactly once, tracked in a `script_migrations` table. There is
+no separate `seed` command: do not add one that calls
+`medusa exec ./src/migration-scripts/initial-data-seed.ts` directly, since `exec`
+bypasses that tracking and will duplicate every sales channel, region, and product the
+script creates if `db:migrate` already ran it once (verified — this exact mistake was
+made and reverted while building this repo). A migration script under this directory
+must be safe to run only once, ever, per environment; if a seed genuinely needs to be
+re-runnable, it belongs in a plain script invoked via `medusa exec` from somewhere
+other than `migration-scripts/`, written to be idempotent (check-then-create).
 
 ## Medusa Skills & MCP Server
 

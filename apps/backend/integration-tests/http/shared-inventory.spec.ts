@@ -17,20 +17,28 @@ import {
   ProductStatus,
 } from "@medusajs/framework/utils";
 
-// Covers TDD case 4 from docs/tdd/medusa-catalog.tdd.md: a cross-listed
+// Covers TDD cases 4-7 from docs/tdd/medusa-catalog.tdd.md: a cross-listed
 // variant backed by one shared inventory item must decrement when an order
 // completes via one brand — the item is not scoped to a sales channel, so
-// both brands read the same stocked/reserved numbers by construction.
+// both brands read the same stocked/reserved numbers by construction. Cases
+// 5-7 (zero-stock rejection, immediate restock visibility, concurrent-
+// checkout oversell prevention) are covered further down.
 jest.setTimeout(60 * 1000);
 
 medusaIntegrationTestRunner({
   testSuite: ({ api, getContainer }) => {
     describe("Shared inventory pool across brands", () => {
       let brandAKey: string;
+      let brandBKey: string;
       let usRegionId: string;
       let variantId: string;
       let inventoryItemId: string;
       let shippingOptionId: string;
+      let outOfStockVariantId: string;
+      let outOfStockInventoryItemId: string;
+      let lastUnitVariantId: string;
+      let lastUnitInventoryItemId: string;
+      let stockLocationId: string;
 
       beforeAll(async () => {
         const container = getContainer();
@@ -63,13 +71,27 @@ medusaIntegrationTestRunner({
                 type: "publishable",
                 created_by: "",
               },
+              {
+                title: "Inv Test Brand B Key",
+                type: "publishable",
+                created_by: "",
+              },
             ],
           },
         });
-        const brandAApiKey = apiKeys[0];
+        const brandAApiKey = apiKeys.find(
+          (k) => k.title === "Inv Test Brand A Key"
+        )!;
+        const brandBApiKey = apiKeys.find(
+          (k) => k.title === "Inv Test Brand B Key"
+        )!;
         brandAKey = brandAApiKey.token;
+        brandBKey = brandBApiKey.token;
         await linkSalesChannelsToApiKeyWorkflow(container).run({
           input: { id: brandAApiKey.id, add: [brandA.id] },
+        });
+        await linkSalesChannelsToApiKeyWorkflow(container).run({
+          input: { id: brandBApiKey.id, add: [brandB.id] },
         });
 
         const { result: regions } = await createRegionsWorkflow(
@@ -101,6 +123,7 @@ medusaIntegrationTestRunner({
           },
         });
         const stockLocation = stockLocations[0];
+        stockLocationId = stockLocation.id;
 
         await link.create({
           [Modules.STOCK_LOCATION]: { stock_location_id: stockLocation.id },
@@ -190,17 +213,59 @@ medusaIntegrationTestRunner({
                 ],
                 sales_channels: [{ id: brandA.id }, { id: brandB.id }],
               },
+              {
+                title: "Out Of Stock Tee",
+                status: ProductStatus.PUBLISHED,
+                shipping_profile_id: shippingProfileId,
+                options: [{ title: "Size", values: ["One Size"] }],
+                variants: [
+                  {
+                    title: "One Size",
+                    sku: "OUT-OF-STOCK-TEE",
+                    options: { Size: "One Size" },
+                    prices: [{ amount: 20, currency_code: "usd" }],
+                  },
+                ],
+                sales_channels: [{ id: brandA.id }, { id: brandB.id }],
+              },
+              {
+                title: "Last Unit Tee",
+                status: ProductStatus.PUBLISHED,
+                shipping_profile_id: shippingProfileId,
+                options: [{ title: "Size", values: ["One Size"] }],
+                variants: [
+                  {
+                    title: "One Size",
+                    sku: "LAST-UNIT-TEE",
+                    options: { Size: "One Size" },
+                    prices: [{ amount: 20, currency_code: "usd" }],
+                  },
+                ],
+                sales_channels: [{ id: brandA.id }, { id: brandB.id }],
+              },
             ],
           },
         });
         variantId = products[0].variants[0].id;
+        outOfStockVariantId = products[1].variants[0].id;
+        lastUnitVariantId = products[2].variants[0].id;
 
         const { data: inventoryItems } = await query.graph({
           entity: "inventory_item",
-          fields: ["id"],
-          filters: { sku: "SHARED-STOCK-TEE" },
+          fields: ["id", "sku"],
+          filters: {
+            sku: ["SHARED-STOCK-TEE", "OUT-OF-STOCK-TEE", "LAST-UNIT-TEE"],
+          },
         });
-        inventoryItemId = inventoryItems[0].id;
+        inventoryItemId = inventoryItems.find(
+          (i) => i.sku === "SHARED-STOCK-TEE"
+        )!.id;
+        outOfStockInventoryItemId = inventoryItems.find(
+          (i) => i.sku === "OUT-OF-STOCK-TEE"
+        )!.id;
+        lastUnitInventoryItemId = inventoryItems.find(
+          (i) => i.sku === "LAST-UNIT-TEE"
+        )!.id;
 
         await createInventoryLevelsWorkflow(container).run({
           input: {
@@ -210,10 +275,78 @@ medusaIntegrationTestRunner({
                 stocked_quantity: 5,
                 inventory_item_id: inventoryItemId,
               },
+              {
+                location_id: stockLocation.id,
+                stocked_quantity: 0,
+                inventory_item_id: outOfStockInventoryItemId,
+              },
+              {
+                location_id: stockLocation.id,
+                stocked_quantity: 1,
+                inventory_item_id: lastUnitInventoryItemId,
+              },
             ],
           },
         });
       });
+
+      // Builds a cart through to a completable state (address + shipping
+      // method + payment session), stopping just short of /complete — used
+      // by the concurrency test below so both racing requests are as close
+      // to simultaneous as possible.
+      async function buildCompletableCart(
+        apiKey: string,
+        variant: string,
+        quantity: number
+      ) {
+        const authHeaders = { headers: { "x-publishable-api-key": apiKey } };
+        const { data: cartData } = await api.post(
+          "/store/carts",
+          {
+            region_id: usRegionId,
+            email: "buyer@example.com",
+            items: [{ variant_id: variant, quantity }],
+          },
+          authHeaders
+        );
+        const cartId = cartData.cart.id;
+
+        await api.post(
+          `/store/carts/${cartId}`,
+          {
+            shipping_address: {
+              first_name: "Test",
+              last_name: "Buyer",
+              address_1: "123 Main St",
+              city: "Los Angeles",
+              country_code: "us",
+              postal_code: "90001",
+            },
+          },
+          authHeaders
+        );
+
+        await api.post(
+          `/store/carts/${cartId}/shipping-methods`,
+          { option_id: shippingOptionId },
+          authHeaders
+        );
+
+        const { data: paymentCollectionData } = await api.post(
+          "/store/payment-collections",
+          { cart_id: cartId },
+          authHeaders
+        );
+        const paymentCollectionId = paymentCollectionData.payment_collection.id;
+
+        await api.post(
+          `/store/payment-collections/${paymentCollectionId}/payment-sessions`,
+          { provider_id: "pp_system_default" },
+          authHeaders
+        );
+
+        return { cartId, authHeaders };
+      }
 
       it("decrements the shared inventory item when an order completes via Brand A", async () => {
         const authHeaders = { headers: { "x-publishable-api-key": brandAKey } };
@@ -279,6 +412,101 @@ medusaIntegrationTestRunner({
           });
         const level = inventoryLevels[0];
         expect(level.stocked_quantity - level.reserved_quantity).toBe(3);
+      });
+
+      // TDD case 5.
+      it("rejects add-to-cart when the shared inventory item is at zero stock", async () => {
+        const authHeaders = { headers: { "x-publishable-api-key": brandAKey } };
+
+        await expect(
+          api.post(
+            "/store/carts",
+            {
+              region_id: usRegionId,
+              email: "buyer@example.com",
+              items: [{ variant_id: outOfStockVariantId, quantity: 1 }],
+            },
+            authHeaders
+          )
+        ).rejects.toMatchObject({
+          response: { status: 400 },
+        });
+
+        const { data: inventoryLevels } = await getContainer()
+          .resolve(ContainerRegistrationKeys.QUERY)
+          .graph({
+            entity: "inventory_level",
+            fields: ["stocked_quantity", "reserved_quantity"],
+            filters: { inventory_item_id: outOfStockInventoryItemId },
+          });
+        expect(inventoryLevels[0].stocked_quantity).toBe(0);
+        expect(inventoryLevels[0].reserved_quantity).toBe(0);
+      });
+
+      // TDD case 6.
+      it("reflects a restock immediately for both brands without a brand-specific step", async () => {
+        const inventoryModuleService = getContainer().resolve(
+          ModuleRegistrationName.INVENTORY
+        );
+        await inventoryModuleService.updateInventoryLevels([
+          {
+            inventory_item_id: outOfStockInventoryItemId,
+            location_id: stockLocationId,
+            stocked_quantity: 4,
+          },
+        ]);
+
+        for (const key of [brandAKey, brandBKey]) {
+          const { data: productData } = await api.get(
+            `/store/products?handle=out-of-stock-tee&fields=id,variants.id,variants.inventory_quantity`,
+            { headers: { "x-publishable-api-key": key } }
+          );
+          expect(
+            productData.products[0].variants[0].inventory_quantity
+          ).toBe(4);
+        }
+      });
+
+      // TDD case 7. Fires two simultaneous /complete requests — one via
+      // Brand A, one via Brand B — against a shared item with stock = 1.
+      // Exactly one should win; the other must be rejected rather than
+      // both succeeding and driving stock negative.
+      it("allows only one of two simultaneous checkouts to claim the last shared unit", async () => {
+        const cartA = await buildCompletableCart(
+          brandAKey,
+          lastUnitVariantId,
+          1
+        );
+        const cartB = await buildCompletableCart(
+          brandBKey,
+          lastUnitVariantId,
+          1
+        );
+
+        const [resultA, resultB] = await Promise.allSettled([
+          api.post(`/store/carts/${cartA.cartId}/complete`, {}, cartA.authHeaders),
+          api.post(`/store/carts/${cartB.cartId}/complete`, {}, cartB.authHeaders),
+        ]);
+
+        const outcomes = [resultA, resultB].map((result) => {
+          if (result.status === "rejected") return "failed";
+          return result.value.data.type === "order" ? "order" : "failed";
+        });
+        const successCount = outcomes.filter((o) => o === "order").length;
+        expect(successCount).toBe(1);
+
+        const { data: inventoryLevels } = await getContainer()
+          .resolve(ContainerRegistrationKeys.QUERY)
+          .graph({
+            entity: "inventory_level",
+            fields: ["stocked_quantity", "reserved_quantity"],
+            filters: { inventory_item_id: lastUnitInventoryItemId },
+          });
+        const available =
+          inventoryLevels[0].stocked_quantity -
+          inventoryLevels[0].reserved_quantity;
+        expect(available).toBeGreaterThanOrEqual(0);
+        expect(available).toBe(0);
       });
     });
   },

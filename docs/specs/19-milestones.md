@@ -44,10 +44,27 @@ working in this repo; unchecked items are scoped but not yet built.
       item isn't scoped to a sales channel at all, so this is the same number either
       brand would read — proven directly at the inventory_level row rather than via two
       separate HTTP calls.
-      Not covered yet: TDD cases 5-6 (reject add-to-cart at zero stock, restock
-      reflecting immediately), 7-8 (concurrent-checkout oversell prevention — needs a
-      harness for firing simultaneous requests), 9 (low-stock alerting — needs an
-      event-bus spy).
+      **Also now covered in the same file:**
+      - Case 5: adding an out-of-stock variant to a cart is rejected with a 400
+        ("Not enough stock available"), and the inventory level stays at 0/0 rather
+        than going negative.
+      - Case 6: an Admin-side restock (`inventoryModuleService.updateInventoryLevels`)
+        is immediately visible to both brands' `/store/products` responses with no
+        brand-specific step — confirms the shared item isn't cached or scoped per
+        channel. (Fetching `variants.inventory_quantity` needs the field spelled out
+        explicitly, e.g. `fields=variants.id,variants.inventory_quantity` — the `*`
+        wildcard prefix used for relations doesn't pull in this computed field.)
+      - Case 7: fired two simultaneous `/store/carts/:id/complete` requests via
+        `Promise.allSettled` — one via Brand A, one via Brand B — against a shared
+        item with stock = 1. **Medusa's built-in reservation locking already prevents
+        the oversell**: exactly one request resolves with `type: "order"`, the other
+        fails with "Not enough stock available", and the final available quantity
+        (`stocked_quantity - reserved_quantity`) is 0, never negative. No custom
+        locking code was needed — this was purely a verification task once the test
+        harness could fire concurrent requests.
+      Not covered yet: TDD case 8 (a cart's reservation expiring frees the unit for a
+      competing cart — needs a short reservation TTL configured for test speed, not
+      just concurrent requests), 9 (low-stock alerting — needs an event-bus spy).
 - [ ] Product/variant catalog beyond the one demo product
 - [ ] Admin roles scoped by sales channel — Medusa v2 doesn't have a built-in per-channel
       admin role; revisit whether this needs a custom module or is just an Admin UI

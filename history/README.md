@@ -24,3 +24,4 @@ the following commit rather than the same one.
 | 14 | [`f70f010`](./14-f70f010.md) | Verify storefronts against a real seeded backend end to end |
 | 15 | [`8e2ca18`](./15-8e2ca18.md) | Phase 3: tax configuration (JP consumption tax, US deferred) |
 | 16 | [`8c7d668`](./16-8c7d668.md) | Phase 1 hardening: zero-stock rejection, restock visibility, oversell prevention |
+| 17 | [`73765cf`](./17-73765cf.md) | Phase 1: low-stock alerting subscriber (TDD case 9) |

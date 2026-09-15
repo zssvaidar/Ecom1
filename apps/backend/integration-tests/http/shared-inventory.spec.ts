@@ -9,6 +9,7 @@ import {
   createStockLocationsWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
   linkSalesChannelsToStockLocationWorkflow,
+  updateInventoryLevelsWorkflow,
 } from "@medusajs/medusa/core-flows";
 import {
   ContainerRegistrationKeys,
@@ -38,6 +39,8 @@ medusaIntegrationTestRunner({
       let outOfStockInventoryItemId: string;
       let lastUnitVariantId: string;
       let lastUnitInventoryItemId: string;
+      let lowStockVariantId: string;
+      let lowStockInventoryItemId: string;
       let stockLocationId: string;
 
       beforeAll(async () => {
@@ -243,18 +246,39 @@ medusaIntegrationTestRunner({
                 ],
                 sales_channels: [{ id: brandA.id }, { id: brandB.id }],
               },
+              {
+                title: "Low Stock Tee",
+                status: ProductStatus.PUBLISHED,
+                shipping_profile_id: shippingProfileId,
+                options: [{ title: "Size", values: ["One Size"] }],
+                variants: [
+                  {
+                    title: "One Size",
+                    sku: "LOW-STOCK-TEE",
+                    options: { Size: "One Size" },
+                    prices: [{ amount: 20, currency_code: "usd" }],
+                  },
+                ],
+                sales_channels: [{ id: brandA.id }, { id: brandB.id }],
+              },
             ],
           },
         });
         variantId = products[0].variants[0].id;
         outOfStockVariantId = products[1].variants[0].id;
         lastUnitVariantId = products[2].variants[0].id;
+        lowStockVariantId = products[3].variants[0].id;
 
         const { data: inventoryItems } = await query.graph({
           entity: "inventory_item",
           fields: ["id", "sku"],
           filters: {
-            sku: ["SHARED-STOCK-TEE", "OUT-OF-STOCK-TEE", "LAST-UNIT-TEE"],
+            sku: [
+              "SHARED-STOCK-TEE",
+              "OUT-OF-STOCK-TEE",
+              "LAST-UNIT-TEE",
+              "LOW-STOCK-TEE",
+            ],
           },
         });
         inventoryItemId = inventoryItems.find(
@@ -265,6 +289,9 @@ medusaIntegrationTestRunner({
         )!.id;
         lastUnitInventoryItemId = inventoryItems.find(
           (i) => i.sku === "LAST-UNIT-TEE"
+        )!.id;
+        lowStockInventoryItemId = inventoryItems.find(
+          (i) => i.sku === "LOW-STOCK-TEE"
         )!.id;
 
         await createInventoryLevelsWorkflow(container).run({
@@ -285,10 +312,28 @@ medusaIntegrationTestRunner({
                 stocked_quantity: 1,
                 inventory_item_id: lastUnitInventoryItemId,
               },
+              {
+                location_id: stockLocation.id,
+                stocked_quantity: 5,
+                inventory_item_id: lowStockInventoryItemId,
+              },
             ],
           },
         });
       });
+
+      async function waitFor(
+        predicate: () => boolean | Promise<boolean>,
+        { timeoutMs = 3000, intervalMs = 50 } = {}
+      ) {
+        const start = Date.now();
+        while (!(await predicate())) {
+          if (Date.now() - start > timeoutMs) {
+            throw new Error("waitFor: timed out waiting for condition");
+          }
+          await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+      }
 
       // Builds a cart through to a completable state (address + shipping
       // method + payment session), stopping just short of /complete — used
@@ -507,6 +552,107 @@ medusaIntegrationTestRunner({
           inventoryLevels[0].reserved_quantity;
         expect(available).toBeGreaterThanOrEqual(0);
         expect(available).toBe(0);
+      });
+
+      // TDD case 9. The low-stock threshold/alerted-flag are opt-in, custom
+      // state on inventory_item.metadata — see src/subscribers/
+      // low-stock-alert.ts. Drives this through *real* sales (full
+      // checkouts, one per brand) and a *real* restock (the same workflow
+      // the Admin API uses), not direct module calls, since that's the
+      // actual production trigger the subscriber listens for — a real sale
+      // only creates a reservation, it never touches inventory_level
+      // through the module's own decorated update method, so a naive test
+      // that pokes stocked_quantity directly would exercise a code path the
+      // subscriber doesn't actually listen to.
+      it("fires a low-stock alert exactly once per threshold crossing, not once per brand", async () => {
+        const container = getContainer();
+        const inventoryModuleService = container.resolve(
+          ModuleRegistrationName.INVENTORY
+        );
+        const eventBusModuleService = container.resolve(Modules.EVENT_BUS);
+
+        await inventoryModuleService.updateInventoryItems({
+          id: lowStockInventoryItemId,
+          metadata: { low_stock_threshold: 3 },
+        });
+
+        const capturedEvents: unknown[] = [];
+        const listener = async (data: unknown) => {
+          capturedEvents.push(data);
+        };
+        eventBusModuleService.subscribe("inventory-item.low-stock", listener);
+
+        try {
+          // Brand A's sale: 5 -> 3 available, crosses the threshold of 3.
+          const cartA = await buildCompletableCart(
+            brandAKey,
+            lowStockVariantId,
+            2
+          );
+          const { data: completionA } = await api.post(
+            `/store/carts/${cartA.cartId}/complete`,
+            {},
+            cartA.authHeaders
+          );
+          expect(completionA.type).toBe("order");
+          await waitFor(() => capturedEvents.length >= 1);
+
+          // Brand B's sale: 3 -> 2 available, still below the threshold —
+          // the crossing already happened, so this must not alert again.
+          const cartB = await buildCompletableCart(
+            brandBKey,
+            lowStockVariantId,
+            1
+          );
+          const { data: completionB } = await api.post(
+            `/store/carts/${cartB.cartId}/complete`,
+            {},
+            cartB.authHeaders
+          );
+          expect(completionB.type).toBe("order");
+          // Give the (non-)event a moment to (not) arrive before asserting.
+          await new Promise((resolve) => setTimeout(resolve, 300));
+
+          expect(capturedEvents).toHaveLength(1);
+          expect(capturedEvents[0]).toMatchObject({
+            data: {
+              inventory_item_id: lowStockInventoryItemId,
+              available_quantity: 3,
+              threshold: 3,
+            },
+          });
+
+          const [alertedItem] = await inventoryModuleService.listInventoryItems(
+            { id: lowStockInventoryItemId }
+          );
+          expect(alertedItem.metadata?.low_stock_alerted).toBe(true);
+
+          // Restocking back above the threshold — via the same workflow the
+          // Admin API's location-level update route runs — clears the flag
+          // so the next crossing can alert again.
+          await updateInventoryLevelsWorkflow(container).run({
+            input: {
+              updates: [
+                {
+                  inventory_item_id: lowStockInventoryItemId,
+                  location_id: stockLocationId,
+                  stocked_quantity: 20,
+                },
+              ],
+            },
+          });
+          await waitFor(async () => {
+            const [item] = await inventoryModuleService.listInventoryItems({
+              id: lowStockInventoryItemId,
+            });
+            return item.metadata?.low_stock_alerted === false;
+          });
+        } finally {
+          eventBusModuleService.unsubscribe(
+            "inventory-item.low-stock",
+            listener
+          );
+        }
       });
     });
   },

@@ -62,9 +62,37 @@ working in this repo; unchecked items are scoped but not yet built.
         (`stocked_quantity - reserved_quantity`) is 0, never negative. No custom
         locking code was needed — this was purely a verification task once the test
         harness could fire concurrent requests.
+      - Case 9: added `src/subscribers/low-stock-alert.ts` — an opt-in low-stock
+        alert keyed off `inventory_item.metadata.low_stock_threshold` (there's no
+        such concept in Medusa v2's inventory module itself). **Real architecture
+        finding along the way:** a sale only *reserves* stock at checkout
+        (`reserveInventoryStep` → `createReservationItems_()`), and that call
+        updates the `inventory_level` row's `reserved_quantity` through the
+        repository directly rather than the module's own decorated
+        `updateInventoryLevels()` method — so no inventory-level-updated event
+        (module or workflow) fires at order-placement time at all. The correct hook
+        for "a sale dropped available stock" turned out to be
+        `ReservationItemWorkflowEvents.CREATED` (`reservation-item.created`),
+        explicitly emitted by core-flows' `completeCartWorkflow` for exactly this
+        reason. Restocks are a separate path — the Admin location-level update
+        route runs `updateInventoryLevelsWorkflow`, which *does* emit
+        `InventoryLevelWorkflowEvents.UPDATED` — so the subscriber listens for both
+        events, using the first to detect a downward crossing and the second to
+        clear the alerted flag once stock recovers. Verified two ways: the
+        integration test drives two real checkouts (one per brand) against a
+        shared item and asserts the alert fires exactly once despite two sales,
+        then a real restock through `updateInventoryLevelsWorkflow` clears the
+        flag; separately, a real `medusa develop` server plus a real curl-driven
+        checkout against a freshly seeded dev database produced the exact same
+        log line, confirming the subscriber registers and fires outside the test
+        harness too.
       Not covered yet: TDD case 8 (a cart's reservation expiring frees the unit for a
       competing cart — needs a short reservation TTL configured for test speed, not
-      just concurrent requests), 9 (low-stock alerting — needs an event-bus spy).
+      just concurrent requests; also, Medusa v2 has no TTL/expiry field on
+      reservations at all — `CreateReservationItemInput`/`UpdateReservationItemInput`
+      carry no expiry concept, so this case doesn't map onto this Medusa version's
+      actual architecture without first building custom expiry logic, which felt
+      like scope creep beyond what this TDD case was asking to verify).
 - [ ] Product/variant catalog beyond the one demo product
 - [ ] Admin roles scoped by sales channel — Medusa v2 doesn't have a built-in per-channel
       admin role; revisit whether this needs a custom module or is just an Admin UI

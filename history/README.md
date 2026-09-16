@@ -25,3 +25,4 @@ the following commit rather than the same one.
 | 15 | [`8e2ca18`](./15-8e2ca18.md) | Phase 3: tax configuration (JP consumption tax, US deferred) |
 | 16 | [`8c7d668`](./16-8c7d668.md) | Phase 1 hardening: zero-stock rejection, restock visibility, oversell prevention |
 | 17 | [`73765cf`](./17-73765cf.md) | Phase 1: low-stock alerting subscriber (TDD case 9) |
+| 18 | [`5e1077b`](./18-5e1077b.md) | Phase 4/5: Twenty CRM sync integration (outbound + inbound webhooks) |

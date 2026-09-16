@@ -265,9 +265,26 @@ working in this repo; unchecked items are scoped but not yet built.
       flow with no console errors. `.env.local` files hold the real (dev-only)
       publishable keys and are gitignored, not committed — see the README for the exact
       steps to reproduce.
-- [ ] Shared account/session across both apps — not verified in the browser yet; the
-      backend side of this is already covered by
-      `apps/backend/integration-tests/http/customer-identity.spec.ts` (Phase 3)
+- [x] Shared account/session across both apps — verified in a real browser
+      (Playwright against the pre-installed Chromium, same substitute as the
+      catalog verification above): registered a new account on Brand A
+      (`localhost:8000`), then logged in with the same email/password on
+      Brand B (`localhost:8001`) in a **separate browser context** (no
+      cookie/localStorage sharing — each storefront is a different origin, so
+      this genuinely re-authenticates rather than riding an existing session,
+      exactly like a real customer visiting a second site) and confirmed the
+      same name and email render there. Went one step further than the
+      backend test already covers: placed a real order as that customer via
+      Brand A (using the storefront's own `_medusa_jwt` auth cookie against
+      the Store API directly, so the order is tied to the real `customer_id`,
+      not just an email match), then reloaded Brand B's account page and
+      confirmed the order appears there — the actual UI, not just the API
+      response `customer-identity.spec.ts` already asserts on. Screenshots
+      confirm both the shared login and the cross-brand order rendering
+      correctly (amount shown in the order's own currency, USD, not
+      re-priced for the JP storefront it's being viewed from — correct,
+      since an order's total doesn't change based on which brand you're
+      browsing from).
 
 ## Phase 7 — Hardening & launch
 - [ ] Logging/monitoring

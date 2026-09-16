@@ -66,7 +66,11 @@ npm run storefront-b:dev   # http://localhost:8001 — browse /jp/categories/app
 Verified end to end in a real browser: both storefronts render the seeded
 "Cross-Brand Demo Tee" at the right price for their currency ($20.00 on Brand A,
 ¥3,000 on Brand B), and a full browse → select size → add-to-cart flow completes with
-no console errors.
+no console errors. Accounts are shared, not per-brand, too: registering on Brand A and
+logging in with the same credentials on Brand B (a separate browser context — no
+cookies carry over, so this is a real second login, not a lingering session)
+resolves to the same customer, and an order placed via Brand A shows up in Brand B's
+own account page.
 
 Or bring up the full stack (Postgres, Redis, backend, both storefronts) in containers:
 

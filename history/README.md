@@ -26,3 +26,4 @@ the following commit rather than the same one.
 | 16 | [`8c7d668`](./16-8c7d668.md) | Phase 1 hardening: zero-stock rejection, restock visibility, oversell prevention |
 | 17 | [`73765cf`](./17-73765cf.md) | Phase 1: low-stock alerting subscriber (TDD case 9) |
 | 18 | [`5e1077b`](./18-5e1077b.md) | Phase 4/5: Twenty CRM sync integration (outbound + inbound webhooks) |
+| 19 | [`c85da06`](./19-c85da06.md) | Phase 6: verify shared account/session across storefronts in a real browser |

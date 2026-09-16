@@ -1,0 +1,13 @@
+# Standalone compose file for the notifier only - it is NOT added to the root
+# docker-compose.yml, which stays untouched. Run from this directory:
+#   cp .env.example .env && docker compose up --build
+services:
+  notifier:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - notifier_state:/data
+
+volumes:
+  notifier_state:

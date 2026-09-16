@@ -1,0 +1,131 @@
+// Declarative pipeline for project-9 — builds every service's container, pushes to
+// ECR, then deploys to EC2 and/or ECS. Mirrors docs/specs/15-cicd.md (staging auto on
+// merge to main, prod behind a manual approval) but runs from this directory instead
+// of the repo root so it can live in this repo without touching the existing
+// .github/workflows/ci.yml pipeline.
+//
+// Expected Jenkins job config:
+//   - Pipeline script from SCM, script path: project-9-jenkins-ec2-ecs-telegram/Jenkinsfile
+//   - Credentials: VAULT_ADDR + VAULT_TOKEN (or AppRole) as Jenkins credentials/env,
+//     used only to reach Vault — Vault itself hands out the short-lived AWS creds and
+//     the Telegram bot token, nothing else is stored in Jenkins.
+
+pipeline {
+  agent any
+
+  parameters {
+    choice(name: 'ENVIRONMENT', choices: ['staging', 'prod'], description: 'Target environment')
+    choice(name: 'DEPLOY_TARGET', choices: ['both', 'ec2', 'ecs'], description: 'Which compute target(s) to deploy')
+  }
+
+  environment {
+    AWS_REGION   = "${env.AWS_REGION ?: 'us-east-1'}"
+    ECR_REGISTRY = "${env.ECR_REGISTRY}" // e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com
+    GIT_SHA      = "${env.GIT_COMMIT?.take(12) ?: 'local'}"
+    PROJECT_DIR  = 'project-9-jenkins-ec2-ecs-telegram'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Lint + Test') {
+      steps {
+        sh 'npm ci'
+        sh 'npm run lint'
+        sh 'npm run test'
+      }
+    }
+
+    stage('Build images') {
+      parallel {
+        stage('backend (node)') {
+          steps { sh 'docker build -f apps/backend/Dockerfile -t backend:$GIT_SHA .' }
+        }
+        stage('storefront-a (node)') {
+          steps { sh 'docker build -f apps/storefront-brand-a/Dockerfile -t storefront-a:$GIT_SHA .' }
+        }
+        stage('storefront-b (node)') {
+          steps { sh 'docker build -f apps/storefront-brand-b/Dockerfile -t storefront-b:$GIT_SHA .' }
+        }
+        stage('notifier (python)') {
+          steps { sh 'docker build -t notifier:$GIT_SHA $PROJECT_DIR/notifier' }
+        }
+      }
+    }
+
+    stage('Push to ECR') {
+      steps {
+        withCredentials([
+          usernamePassword(credentialsId: 'vault-approle', usernameVariable: 'VAULT_ROLE_ID', passwordVariable: 'VAULT_SECRET_ID')
+        ]) {
+          sh '''
+            . $PROJECT_DIR/deploy/lib/vault-env.sh
+            vault_aws_creds "jenkins-ecr-push"
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+            for svc in backend storefront-a storefront-b notifier; do
+              docker tag "$svc:$GIT_SHA" "$ECR_REGISTRY/$svc:$GIT_SHA"
+              docker push "$ECR_REGISTRY/$svc:$GIT_SHA"
+            done
+          '''
+        }
+      }
+    }
+
+    stage('Deploy staging') {
+      when { expression { params.ENVIRONMENT == 'staging' } }
+      steps {
+        withCredentials([
+          usernamePassword(credentialsId: 'vault-approle', usernameVariable: 'VAULT_ROLE_ID', passwordVariable: 'VAULT_SECRET_ID')
+        ]) {
+          sh '''
+            . $PROJECT_DIR/deploy/lib/vault-env.sh
+            vault_aws_creds "jenkins-deploy-staging"
+            if [ "$DEPLOY_TARGET" = "ec2" ] || [ "$DEPLOY_TARGET" = "both" ]; then
+              $PROJECT_DIR/deploy/deploy-ec2.sh staging
+            fi
+            if [ "$DEPLOY_TARGET" = "ecs" ] || [ "$DEPLOY_TARGET" = "both" ]; then
+              $PROJECT_DIR/deploy/deploy-ecs.sh staging
+            fi
+          '''
+        }
+      }
+    }
+
+    stage('Approve prod') {
+      when { expression { params.ENVIRONMENT == 'prod' } }
+      steps { input message: 'Promote to production?' }
+    }
+
+    stage('Deploy prod') {
+      when { expression { params.ENVIRONMENT == 'prod' } }
+      steps {
+        withCredentials([
+          usernamePassword(credentialsId: 'vault-approle', usernameVariable: 'VAULT_ROLE_ID', passwordVariable: 'VAULT_SECRET_ID')
+        ]) {
+          sh '''
+            . $PROJECT_DIR/deploy/lib/vault-env.sh
+            vault_aws_creds "jenkins-deploy-prod"
+            if [ "$DEPLOY_TARGET" = "ec2" ] || [ "$DEPLOY_TARGET" = "both" ]; then
+              $PROJECT_DIR/deploy/deploy-ec2.sh prod
+            fi
+            if [ "$DEPLOY_TARGET" = "ecs" ] || [ "$DEPLOY_TARGET" = "both" ]; then
+              $PROJECT_DIR/deploy/deploy-ecs.sh prod
+            fi
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      sh '$PROJECT_DIR/deploy/lib/telegram-notify.sh "[OK] ${ENVIRONMENT} deploy succeeded - ${JOB_NAME} #${BUILD_NUMBER} (${GIT_SHA})"'
+    }
+    failure {
+      sh '$PROJECT_DIR/deploy/lib/telegram-notify.sh "[FAILED] ${ENVIRONMENT} deploy FAILED - ${JOB_NAME} #${BUILD_NUMBER} (${GIT_SHA}), see ${BUILD_URL}"'
+    }
+  }
+}

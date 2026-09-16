@@ -36,14 +36,19 @@ module.exports = defineConfig({
       cookieSecret: process.env.COOKIE_SECRET,
     }
   },
-  ...(paymentProviders.length > 0
-    ? {
-        modules: [
+  modules: [
+    // Durable audit/idempotency log for the Twenty CRM sync (docs/specs/
+    // 08-integration-webhooks.md) — always registered, unlike the
+    // conditional Stripe registration below, since it has no required
+    // options and needs no external service to boot.
+    { resolve: './src/modules/twenty-sync' },
+    ...(paymentProviders.length > 0
+      ? [
           {
             resolve: '@medusajs/medusa/payment',
             options: { providers: paymentProviders },
           },
-        ],
-      }
-    : {}),
+        ]
+      : []),
+  ],
 })

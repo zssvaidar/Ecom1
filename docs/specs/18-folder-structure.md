@@ -29,10 +29,14 @@ as the project grows across phases.
 ├── package.json / turbo.json     # npm workspaces + Turborepo task graph
 ```
 
-Twenty CRM is not vendored into this repo. Phase 4/5 will add it either as its own
-`apps/twenty` Docker Compose service (self-hosted, per `13-infra-docker-compose.md`) or
-as a Twenty Cloud instance reached only via webhook/API — that choice is still open per
-that spec's open questions, and adding the service block is deferred until Phase 4.
+Twenty CRM is not vendored into this repo — it's an off-the-shelf image, not our own
+source, so there's no `apps/twenty` package to add. `docker-compose.yml` does now carry
+a self-hosted `twenty`/`twenty-db` service pair behind an opt-in `twenty` profile
+(Phase 4), as a default; a Twenty Cloud instance reached only via webhook/API remains
+the alternative per `07-twenty-data-model.md`'s open questions, and either way the
+Medusa-side integration code doesn't care which one is running behind
+`TWENTY_WEBHOOK_URL`. The compose service itself is unverified in this repo's own
+environment (no Docker daemon available here) — see `19-milestones.md` Phase 4.
 
 ## Deviation from `15-cicd.md`
 `15-cicd.md` specifies self-hosted GitLab + Jenkins. This repo is hosted on GitHub, so
@@ -53,4 +57,6 @@ this repo actually has.
 - [x] `apps/backend`, `apps/storefront-brand-a`, `apps/storefront-brand-b` exist as
       npm workspaces under one Turborepo root
 - [x] `docs/` and `infra/` are committed and traceable from this file
-- [ ] `apps/twenty` (or an external Twenty Cloud reference) added in Phase 4
+- [ ] A running Twenty instance (self-hosted or Cloud) reachable from this stack —
+      the opt-in `docker-compose.yml` service pair added in Phase 4 is unverified
+      (no Docker daemon in this repo's own environment); see `19-milestones.md`

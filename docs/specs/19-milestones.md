@@ -177,13 +177,82 @@ working in this repo; unchecked items are scoped but not yet built.
       exists (for `tp_system` to resolve against) but carries no rate.
 
 ## Phase 4 — Twenty CRM data model
-- [ ] Twenty added to the stack (self-hosted service or Cloud reference)
-- [ ] Person/Company objects, Shipment/Fulfillment custom object
+- [ ] Twenty added to the stack (self-hosted service or Cloud reference) — a
+      self-hosted `twenty`/`twenty-db` service pair was added to
+      `docker-compose.yml` behind an opt-in `twenty` profile
+      (`docker compose --profile twenty up`), but **could not be booted or
+      verified in this repo's own environment** — no Docker daemon is available
+      here (confirmed: `dockerd` fails to start under this sandbox's restricted
+      privileges). Treat the compose service's image tag and env vars as a
+      best-effort starting point against Twenty's self-hosting docs at the time
+      this was written, not a verified-working config. `docker compose config`
+      (which needs no daemon) does confirm the profile gating itself is
+      correct: `docker compose up` with no profile behaves exactly as before
+      (no Twenty services), and `--profile twenty` correctly adds both.
+- [ ] Person/Company objects, Shipment/Fulfillment custom object — these are
+      configured by hand inside a running Twenty workspace's no-code object
+      builder, not something scriptable from this repo without one. Exact
+      fields to configure are written up as a runbook in
+      `docs/specs/07-twenty-data-model.md`'s new "Implementation status"
+      section, alongside an open question this repo couldn't resolve without a
+      real Twenty instance: whether the current Twenty version can turn an
+      inbound webhook into record upserts directly (a webhook-triggered
+      Workflow) or whether a sync process needs to call Twenty's own API
+      instead.
 
 ## Phase 5 — Medusa ↔ Twenty integration
-- [ ] Outbound `order.placed` webhook + customer upsert
-- [ ] Inbound fulfillment/tracking webhook
-- [ ] Redis-backed retry queue, idempotency keys
+- [x] Outbound `order.placed` webhook + customer upsert
+      (`apps/backend/src/subscribers/twenty-order-sync.ts`): on every
+      `order.placed` event, builds the exact payload shape from
+      `docs/specs/08-integration-webhooks.md` (customer, line items, address,
+      currency, total, `sales_channel` from the order's own channel name) and
+      hands it to the sync queue. A failure anywhere in this path is caught
+      and logged, never allowed to affect the order.
+- [x] Inbound fulfillment/tracking webhook
+      (`apps/backend/src/api/webhooks/twenty/fulfillment/route.ts` +
+      `apps/backend/src/workflows/apply-twenty-fulfillment-update.ts`): HMAC
+      signature required (raw-body verification via a route-level
+      `preserveRawBody` middleware — re-serializing the parsed JSON before
+      checking the signature would silently break verification on relatively
+      common cases like different key ordering); the write-back scope guard is
+      an *allowlist* (only `fulfillment_status`/`tracking_number`/`carrier` are
+      ever read from the body) rather than a blocklist, so there's no path for
+      `total`/`payment_status`/`status` to reach a real order field regardless
+      of what Twenty sends; unknown `medusa_order_id` returns 404, not a
+      silent drop or a crash; applying is idempotent (upserts into
+      `order.metadata.twenty_fulfillment`, so redelivery just overwrites the
+      same values).
+- [x] Redis-backed retry queue, idempotency keys
+      (`apps/backend/src/modules/twenty-sync/`): a real BullMQ queue backed by
+      Redis retries a failed delivery on the documented 1m/5m/30m/2h-then-
+      hourly schedule, and a companion Postgres `twenty_sync_event` model
+      (its own tiny custom module) is the idempotency/audit source of truth —
+      Redis owns retry *timing*, Postgres owns "has this order already been
+      synced" and "which events are dead," so a Redis flush can't silently
+      reopen an idempotency guarantee. After 24h of continued failure an event
+      is marked `dead` and a `twenty-sync.dead` event is emitted (logged as an
+      alert) — the original order is never affected either way.
+      **Real finding along the way:** `bullmq`/`ioredis` were already present
+      in `node_modules` as transitive dependencies of Medusa's own
+      `@medusajs/event-bus-redis`/`@medusajs/workflow-engine-redis` packages
+      (neither of which this repo actually registers — both still run
+      in-memory), so `bullmq` was added as an explicit direct dependency
+      rather than relying on that undeclared transitive availability.
+      **Verified two ways:** the integration test suite
+      (`apps/backend/integration-tests/http/twenty-webhooks.spec.ts`, 10
+      tests) drives real checkouts against a local mock HTTP server standing
+      in for Twenty (toggleable reachable/failing, exactly the fixture this
+      module's own TDD doc calls for) — covering successful delivery with the
+      right payload/signature, an unreachable Twenty never blocking or failing
+      the order, and (via a direct call with a manipulated
+      `first_attempted_at`, the fake-clock equivalent of waiting out the real
+      24h) the dead-letter transition and alert. Separately, a real
+      `medusa develop` server against a real Redis and a real standalone mock
+      HTTP server (not just the Jest harness) produced the same outcome end to
+      end: a real checkout's payload arrived correctly signed and the audit
+      row reached `delivered`.
+      **Not done:** actually reaching a real Twenty instance — none is running
+      anywhere this repo's environment can verify against (see Phase 4).
 
 ## Phase 6 — Frontend
 - [x] Two Next.js apps scaffolded, each on its own port, own `.env.template`

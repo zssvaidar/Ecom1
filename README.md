@@ -75,8 +75,15 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Twenty CRM isn't wired into the stack yet — that's Phase 4/5
-(`docs/specs/07-twenty-data-model.md`, `docs/specs/08-integration-webhooks.md`).
+Twenty CRM itself isn't part of this compose stack by default — add
+`--profile twenty` to bring up a self-hosted instance alongside it (unverified in
+this repo's own environment; see `docs/specs/19-milestones.md` Phase 4). The
+Medusa-side sync code (Phase 5) is built and tested regardless of whether a real
+Twenty is running: outbound order sync
+(`apps/backend/src/subscribers/twenty-order-sync.ts`), the Redis-backed retry
+queue (`apps/backend/src/modules/twenty-sync/`), and the inbound fulfillment
+webhook (`apps/backend/src/api/webhooks/twenty/fulfillment/`) — see
+`docs/specs/07-twenty-data-model.md` and `docs/specs/08-integration-webhooks.md`.
 
 ## CI
 

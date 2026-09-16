@@ -46,6 +46,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Redis dump file (written to CWD by a local redis-server, e.g. when
+# developing/testing the Twenty sync queue against a real Redis)
+dump.rdb
+
 # macOS system files
 .DS_Store
 .DS_Store?

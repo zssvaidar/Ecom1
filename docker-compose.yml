@@ -1,11 +1,22 @@
 # Local dev stack. Postgres here is dev-only — staging/prod use AWS RDS instead
 # (docs/specs/12-database-design.md, docs/specs/13-infra-docker-compose.md).
 #
-# Twenty CRM is not included yet (Phase 4/5); see docs/specs/18-folder-structure.md.
-#
 # Usage:
 #   cp .env.example .env
 #   docker compose up --build
+#
+# Twenty CRM (Phase 4/5, docs/specs/07-twenty-data-model.md) is opt-in via the
+# "twenty" profile — `docker compose --profile twenty up --build` — since it
+# isn't needed to work on Medusa/the storefronts and, unlike every other
+# service here, its self-hosted config below has NOT been booted or verified
+# in this repo's own dev/CI environment (no Docker daemon available there;
+# see docs/specs/19-milestones.md). Treat image tags and env var names as a
+# best-effort starting point from Twenty's self-hosting docs at the time this
+# was written, not a verified-working config — check Twenty's current
+# self-hosting guide before relying on it. Once it's up, point this repo's
+# backend .env TWENTY_WEBHOOK_URL/TWENTY_API_TOKEN at it (or at a Twenty
+# Cloud workspace instead — the integration code only needs a reachable URL
+# and shared secrets, it doesn't care which).
 
 services:
   postgres:
@@ -82,5 +93,49 @@ services:
     ports:
       - "8001:8001"
 
+  # Opt-in — see the header comment above. Twenty needs its own Postgres
+  # database (not shared with Medusa's — it manages its own schema) and a
+  # Redis instance for its background worker; it can share the "redis"
+  # service above (a different logical DB index) since Twenty and BullMQ
+  # here don't use the same queue names.
+  twenty-db:
+    image: postgres:16
+    profiles: ["twenty"]
+    environment:
+      POSTGRES_DB: twenty
+      POSTGRES_USER: twenty
+      POSTGRES_PASSWORD: ${TWENTY_DB_PASSWORD:-twenty}
+    volumes:
+      - twenty_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U twenty"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  twenty:
+    image: twentycrm/twenty:latest
+    profiles: ["twenty"]
+    depends_on:
+      twenty-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PG_DATABASE_URL: postgres://twenty:${TWENTY_DB_PASSWORD:-twenty}@twenty-db:5432/twenty
+      REDIS_URL: redis://redis:6379
+      SERVER_URL: ${TWENTY_SERVER_URL:-http://localhost:3000}
+      # docker compose interpolates every service's env block up front
+      # regardless of which profile is active, so a required (`:?`) var
+      # here would break `docker compose up` for everyone, not just people
+      # using the twenty profile — a placeholder default it is. Twenty
+      # will boot but must not be used past local experimentation with this
+      # value; set a real TWENTY_APP_SECRET before anything resembling
+      # production.
+      APP_SECRET: ${TWENTY_APP_SECRET:-changeme-generate-a-real-secret}
+    ports:
+      - "3000:3000"
+
 volumes:
   pgdata:
+  twenty_pgdata:

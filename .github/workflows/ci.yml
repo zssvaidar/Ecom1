@@ -43,9 +43,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Unit tests (no DB required)
-        # --passWithNoTests: Phase 0 has no custom modules/workflows yet, so there's
-        # nothing under src/**/__tests__ to match. Drop this once Phase 1 adds real tests.
-        run: npm run test:unit --workspace=@dtc/backend -- --passWithNoTests
+        run: npm run test:unit --workspace=@dtc/backend
 
   test-backend-integration:
     runs-on: ubuntu-latest
@@ -59,6 +57,19 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Only twenty-webhooks.spec.ts uses this — it sets REDIS_URL itself
+      # (see that file's top-of-file comment) and exercises a real BullMQ
+      # queue against it. Every other spec file runs with TWENTY_WEBHOOK_URL
+      # unset, so their order.placed events never touch Redis at all.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5

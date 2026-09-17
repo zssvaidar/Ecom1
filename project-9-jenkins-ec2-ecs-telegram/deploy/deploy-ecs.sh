@@ -13,6 +13,15 @@
 #   ECS_CLUSTER                  - default "medusa-twenty-${ENVIRONMENT}"
 #   ECS_EXECUTION_ROLE_ARN
 #   ECS_TASK_ROLE_ARN
+#   SECURITY_GROUP_ID            - required. infra/infra.sh's create_vpc() makes
+#                                   sg_web/sg_rds but no ECS security group - this
+#                                   script needs one of its own (see this project's
+#                                   README for the one-time `aws ec2
+#                                   create-security-group` command to make it,
+#                                   infra.sh being off-limits to edit here).
+#   SUBNET_IDS                   - required, comma-separated. Use infra.sh's public
+#                                   subnets (same ones create_ec2 uses):
+#                                   aws ec2 ... | infra-state.json's subnet_public_a/_b
 #   AWS_REGION                   - default us-east-1
 #   TASK_CPU / TASK_MEMORY       - default 256 / 512 (Fargate minimum)
 #
@@ -31,6 +40,8 @@ ECS_CLUSTER="${ECS_CLUSTER:-medusa-twenty-${ENVIRONMENT}}"
 TASK_CPU="${TASK_CPU:-256}"
 TASK_MEMORY="${TASK_MEMORY:-512}"
 LOG_GROUP="${LOG_GROUP:-/ecs/medusa-twenty-${ENVIRONMENT}}"
+SECURITY_GROUP_ID="${SECURITY_GROUP_ID:?SECURITY_GROUP_ID is required - see this project's README for how to create the ECS security group}"
+SUBNET_IDS="${SUBNET_IDS:?SUBNET_IDS is required (comma-separated) - use infra.sh's public subnet IDs}"
 
 # service -> container port
 SERVICES=(
@@ -65,13 +76,39 @@ deploy_service() {
     --cli-input-json file:///dev/stdin \
     --query 'taskDefinition.revision' --output text)"
 
-  echo "== ${name}: updating service to ${family}:${new_revision}"
-  aws ecs update-service \
-    --cluster "$ECS_CLUSTER" \
-    --service "$name" \
-    --task-definition "${family}:${new_revision}" \
-    --force-new-deployment \
-    --region "$AWS_REGION" >/dev/null
+  # Idempotent: infra.sh only creates the cluster, never a service (see its own
+  # "Task definitions and services are created by the deploy pipeline" log line).
+  # First deploy ever for this service must create-service; every deploy after
+  # that must update-service instead, or this errors with
+  # "Creation of service was not idempotent" / "already exists".
+  local subnets_json
+  subnets_json="$(printf '%s' "$SUBNET_IDS" | tr ',' '\n' | jq -R . | jq -sc .)"
+  local network_config
+  network_config="{\"awsvpcConfiguration\":{\"subnets\":${subnets_json},\"securityGroups\":[\"${SECURITY_GROUP_ID}\"],\"assignPublicIp\":\"ENABLED\"}}"
+
+  local service_status
+  service_status="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$name" \
+    --region "$AWS_REGION" --query 'services[0].status' --output text 2>/dev/null || echo "MISSING")"
+
+  if [ "$service_status" = "ACTIVE" ] || [ "$service_status" = "DRAINING" ]; then
+    echo "== ${name}: service already exists (${service_status}), updating to ${family}:${new_revision}"
+    aws ecs update-service \
+      --cluster "$ECS_CLUSTER" \
+      --service "$name" \
+      --task-definition "${family}:${new_revision}" \
+      --force-new-deployment \
+      --region "$AWS_REGION" >/dev/null
+  else
+    echo "== ${name}: no existing service, creating one on ${family}:${new_revision}"
+    aws ecs create-service \
+      --cluster "$ECS_CLUSTER" \
+      --service-name "$name" \
+      --task-definition "${family}:${new_revision}" \
+      --desired-count 1 \
+      --launch-type FARGATE \
+      --network-configuration "$network_config" \
+      --region "$AWS_REGION" >/dev/null
+  fi
 
   echo "== ${name}: waiting for service to stabilize"
   if ! aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$name" --region "$AWS_REGION"; then

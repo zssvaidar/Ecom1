@@ -19,10 +19,17 @@ pipeline {
   }
 
   environment {
-    AWS_REGION   = "${env.AWS_REGION ?: 'us-east-1'}"
-    ECR_REGISTRY = "${env.ECR_REGISTRY}" // e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com
-    GIT_SHA      = "${env.GIT_COMMIT?.take(12) ?: 'local'}"
-    PROJECT_DIR  = 'project-9-jenkins-ec2-ecs-telegram'
+    AWS_REGION        = "${env.AWS_REGION ?: 'us-east-1'}"
+    ECR_REGISTRY      = "${env.ECR_REGISTRY}" // e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com
+    GIT_SHA           = "${env.GIT_COMMIT?.take(12) ?: 'local'}"
+    PROJECT_DIR       = 'project-9-jenkins-ec2-ecs-telegram'
+    // Resource IDs, not secrets (docs/specs/14-env-secrets.md draws this line
+    // explicitly) - plain Jenkins global/job env vars, not a Vault path. Set
+    // these once per Jenkins instance to the values from this project's README
+    // ("ECS rollout" section: the one-time security-group command, and
+    // infra-state.json's subnet_public_a/_b).
+    SECURITY_GROUP_ID = "${env.SECURITY_GROUP_ID}"
+    SUBNET_IDS        = "${env.SUBNET_IDS}"
   }
 
   stages {

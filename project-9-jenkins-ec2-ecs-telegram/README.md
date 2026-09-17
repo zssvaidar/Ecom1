@@ -71,10 +71,46 @@ the old container running and exits non-zero — no automatic rollback beyond th
 ## ECS rollout (`deploy/deploy-ecs.sh`)
 
 Renders `ecs/task-def.template.json` for the given service/image/port, calls
-`aws ecs register-task-definition`, then `aws ecs update-service --force-new-deployment`
-and `aws ecs wait services-stable`. On a timed-out wait it re-registers and switches the
+`aws ecs register-task-definition`, then checks whether the service already exists
+(`aws ecs describe-services`) — `create-service` on the first-ever deploy for that
+service, `update-service --force-new-deployment` on every one after — and waits for
+`aws ecs wait services-stable`. On a timed-out wait it re-registers and switches the
 service back to the previous task definition revision (ECS keeps old revisions around,
 so this is just pointing `update-service` at `family:previous-revision`).
+
+**`SECURITY_GROUP_ID` / `SUBNET_IDS`** — required, and deliberately NOT something
+`infra/infra.sh` provides: `create_vpc()` there makes `sg_web` (for EC2) and `sg_rds`
+(for RDS) but no ECS security group, and `create_ecs()` explicitly defers "task
+definitions and services" to the deploy pipeline — this script. `infra.sh` is an
+existing file this project doesn't touch, so the ECS security group is a one-time
+manual step instead of something `infra.sh create ecs` does for you:
+
+```bash
+# Run once per environment. Mirrors infra.sh's own sg_web (see infra/infra.sh:151-160)
+# in style - open the app ports to 0.0.0.0/0, since there's no ALB in front yet
+# (infra/README.md notes create_alb/destroy_alb as a not-yet-built follow-up).
+# Tighten the --cidr to a specific ALB/VPC source once one exists instead.
+VPC_ID="$(jq -r .vpc_id ../infra/infra-state.json)"
+SG_ID=$(aws ec2 create-security-group --group-name medusa-twenty-ecs \
+  --description "ECS tasks - backend/storefronts/notifier" --vpc-id "$VPC_ID" \
+  --tag-specifications 'ResourceType=security-group,Tags=[{Key=Project,Value=medusa-twenty},{Key=Name,Value=medusa-twenty-ecs}]' \
+  --query 'GroupId' --output text)
+for port in 9000 8000 8001 8080; do
+  aws ec2 authorize-security-group-ingress --group-id "$SG_ID" --protocol tcp --port "$port" --cidr 0.0.0.0/0
+done
+echo "$SG_ID"   # -> export SECURITY_GROUP_ID=... for deploy-ecs.sh / the Jenkinsfile
+```
+
+Reuse `infra.sh`'s public subnets for `SUBNET_IDS` (same ones `create_ec2` launches
+into): `jq -r '"\(.subnet_public_a),\(.subnet_public_b)"' infra/infra-state.json`.
+
+Note this is a **network**-layer resource, not an IAM one — it's not part of the
+Jenkins user/role/policy setup in `awscli-vault-jenkins-cd-stack/project-8`. That
+project's `jenkins-role` is scoped by AWS *service* (`set_1 = ec2, rds`); the security
+group ID above is just a value Jenkins reads (from Vault or a job parameter) and
+passes through to `ecs create-service`/`update-service` — it never needs
+`ec2:CreateSecurityGroup`/`AuthorizeSecurityGroupIngress` permission for a normal
+deploy, only whoever runs the one-time command above does.
 
 ## Telegram uptime notifier (`notifier/`)
 

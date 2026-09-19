@@ -1,0 +1,11 @@
+{
+  "_comment": "Public-facing tier - the only tier in this example set that legitimately opens anything to 0.0.0.0/0. SSH is scoped to a placeholder admin CIDR, not the world - replace ADMIN_CIDR before applying.",
+  "ingress": [
+    { "protocol": "tcp", "from_port": 80,  "to_port": 80,  "source_type": "cidr", "source": "0.0.0.0/0",       "description": "HTTP from internet (redirects to HTTPS at the app, not here)" },
+    { "protocol": "tcp", "from_port": 443, "to_port": 443, "source_type": "cidr", "source": "0.0.0.0/0",       "description": "HTTPS from internet" },
+    { "protocol": "tcp", "from_port": 22,  "to_port": 22,  "source_type": "cidr", "source": "203.0.113.0/24", "description": "SSH from office/admin CIDR only - replace with your actual range, never 0.0.0.0/0" }
+  ],
+  "egress": [
+    { "protocol": "tcp", "from_port": 0, "to_port": 65535, "source_type": "cidr", "source": "0.0.0.0/0", "description": "default all-outbound - fine for a web tier that needs to reach package registries, the app tier, and AWS APIs" }
+  ]
+}

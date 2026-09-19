@@ -1,0 +1,7 @@
+{
+  "_comment": "DB tier (RDS) - tightest of the three. Ingress only from the app tier's SG on the DB port, nothing else. Egress is deliberately NOT left at the default all-outbound: a database has no legitimate reason to initiate outbound connections, so this locks egress down to nothing at all. Apply this file with apply-rules.sh's --prune flag on a freshly created group so the default all-outbound egress rule gets removed, not just left alongside these.",
+  "ingress": [
+    { "protocol": "tcp", "from_port": 5432, "to_port": 5432, "source_type": "sg", "source": "sg-APP_TIER_ID", "description": "Postgres from app tier only" }
+  ],
+  "egress": []
+}

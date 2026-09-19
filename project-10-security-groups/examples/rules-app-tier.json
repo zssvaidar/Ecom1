@@ -1,0 +1,11 @@
+{
+  "_comment": "App tier (e.g. this repo's Medusa backend / storefronts) - nothing here is open to 0.0.0.0/0. Traffic is only accepted from the web tier's security group, referenced by ID, not by re-deriving the web tier's CIDR/IP range. Replace sg-WEB_TIER_ID with the ID create-sg.sh printed for the web tier.",
+  "ingress": [
+    { "protocol": "tcp", "from_port": 9000, "to_port": 9000, "source_type": "sg", "source": "sg-WEB_TIER_ID", "description": "Medusa backend API from web tier only" },
+    { "protocol": "tcp", "from_port": 8000, "to_port": 8001, "source_type": "sg", "source": "sg-WEB_TIER_ID", "description": "storefront-a/b from web tier only" }
+  ],
+  "egress": [
+    { "protocol": "tcp", "from_port": 443,  "to_port": 443,  "source_type": "cidr", "source": "0.0.0.0/0", "description": "HTTPS out - AWS APIs, ECR, Stripe, Twenty" },
+    { "protocol": "tcp", "from_port": 5432, "to_port": 5432, "source_type": "sg",   "source": "sg-DB_TIER_ID", "description": "Postgres to db tier only" }
+  ]
+}
